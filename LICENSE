@@ -1,33 +1,3 @@
-# Synchronize Pingdom IPs into Juniper SRX firewall
-
-This tools is designed to run a Kubernetes Cron Job and keep the Juniper address book updated. A single address-set *pingdom-probe-servers* will be created, including the required addresses. All addresses have the prefix *pingdom-*.
-
-## Environment Variables
-
-| Name | Description | Required? | Example |
-| --- | --- | ---| --- |
-| JUNIPER_HOST | Name of the DNS name or IP of the Juniper SRX system. | yes | 10.10.10.1 |
-| JUNIPER_USER | The name of the user to use for accessing the Juniper. The user is required to have the *super-user* role. | yes | root |
-| JUNIPER_PASSWORD | The password of the Juniper user. | yes | **** |
-
-## Running the Cron Job manually
-
-Issue the following command to create a job from the cron job:
-
-```
-kubectl --namespace=juniper-support create job --from=cronjob/junos-sync-pingdom-ips junos-sync-pingdom-ips-manually
-```
-
-## Authors
-
-The library is sponsored by the [marvin + konsorten GmbH](http://www.konsorten.de).
-
-We thank all the authors who provided code to this library:
-
-* Felix Kollmann
-
-## License
-
 (The MIT License)
 
 Copyright (c) 2018 marvin + konsorten GmbH (open-source@konsorten.de)
