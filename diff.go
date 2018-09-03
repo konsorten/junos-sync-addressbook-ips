@@ -18,8 +18,8 @@ func DiffSortedIPs(a, b []string) []string {
 	r := make([]string, 0, max(aCount, bCount))
 
 	for i < aCount && j < bCount {
-		aa := strings.TrimSuffix(a[i], "/32")
-		bb := strings.TrimSuffix(b[j], "/32")
+		aa := unifyIP(a[i])
+		bb := unifyIP(b[j])
 		c := strings.Compare(aa, bb)
 
 		switch c {
@@ -43,11 +43,11 @@ func DiffSortedIPs(a, b []string) []string {
 
 	// append remaining tails
 	for ; i < aCount; i++ {
-		r = append(r, strings.TrimSuffix(a[i], "/32"))
+		r = append(r, unifyIP(a[i]))
 	}
 
 	for ; j < bCount; j++ {
-		r = append(r, strings.TrimSuffix(b[j], "/32"))
+		r = append(r, unifyIP(b[j]))
 	}
 
 	return r

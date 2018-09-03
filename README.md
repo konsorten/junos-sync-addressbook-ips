@@ -1,6 +1,6 @@
 # Synchronize Pingdom IPs into Juniper SRX firewall
 
-This tools is designed to run a Kubernetes Cron Job and keep the Juniper address book updated. A single address-set *pingdom-probe-servers* will be created, including the required addresses. All addresses have the prefix *pingdom-*.
+This tools is designed to run a Kubernetes Cron Job and keep the Juniper address book updated. A single address-set *pingdom-probe-servers* will be created, including the required IPv4 and IPv6 addresses. All addresses have the prefix *pingdom-*.
 
 ## Environment Variables
 
