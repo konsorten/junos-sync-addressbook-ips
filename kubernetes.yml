@@ -1,7 +1,7 @@
 apiVersion: batch/v1beta1
 kind: CronJob
 metadata:
-  name: junos-sync-pingdom-ips
+  name: junos-sync-addressbook-ips
   namespace: juniper-support
 spec:
   schedule: "@hourly"
@@ -10,8 +10,8 @@ spec:
       template:
         spec:
           containers:
-          - name: junos-sync-pingdom-ips
-            image: kontainer.store/networking/junos-sync-pingdom-ips:a001
+          - name: junos-sync-addressbook-ips
+            image: kontainer.store/networking/junos-sync-addressbook-ips:a001
             imagePullPolicy: Always
             env:
               - name: JUNIPER_HOST   

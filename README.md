@@ -15,7 +15,7 @@ This tools is designed to run a Kubernetes Cron Job and keep the Juniper address
 Issue the following command to create a job from the cron job:
 
 ```
-kubectl --namespace=juniper-support create job --from=cronjob/junos-sync-pingdom-ips junos-sync-pingdom-ips-manually
+kubectl --namespace=juniper-support create job --from=cronjob/junos-sync-addressbook-ips junos-sync-addressbook-ips-manually
 ```
 
 ## Authors

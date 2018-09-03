@@ -1,8 +1,8 @@
 FROM golang:1.10-stretch AS builder
 
-COPY . /go/src/github.com/konsorten/junos-sync-pingdom-ips/
+COPY . /go/src/github.com/konsorten/junos-sync-addressbook-ips/
 
-WORKDIR /go/src/github.com/konsorten/junos-sync-pingdom-ips/
+WORKDIR /go/src/github.com/konsorten/junos-sync-addressbook-ips/
 
 RUN go get && go build
 
@@ -12,6 +12,6 @@ ENV JUNIPER_HOST=
 ENV JUNIPER_USER=root
 ENV JUNIPER_PASSWORD=
 
-COPY --from=builder /go/src/github.com/konsorten/junos-sync-pingdom-ips/junos-sync-pingdom-ips /go/bin/junos-sync-pingdom-ips
+COPY --from=builder /go/src/github.com/konsorten/junos-sync-addressbook-ips/junos-sync-addressbook-ips /go/bin/junos-sync-addressbook-ips
 
-ENTRYPOINT [ "/go/bin/junos-sync-pingdom-ips" ]
+ENTRYPOINT [ "/go/bin/junos-sync-addressbook-ips" ]
