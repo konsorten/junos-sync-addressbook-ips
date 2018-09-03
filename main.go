@@ -178,6 +178,7 @@ func mainInternal() error {
 	const PingdomProbeServersAddressSetName = "pingdom-probe-servers"
 
 	commands = append(commands, fmt.Sprintf("delete address-set \"%v\"", PingdomProbeServersAddressSetName))
+	commands = append(commands, fmt.Sprintf("set address-set \"%v\" description \"Pingdom Probe Servers IPv4\"", PingdomProbeServersAddressSetName))
 
 	for _, key := range ipMapKeys {
 		ipEntry := ipMap[key]
