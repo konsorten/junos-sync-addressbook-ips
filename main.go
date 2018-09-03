@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/koepkeca/sliceDiff"
 	"github.com/scottdware/go-junos"
 	log "github.com/sirupsen/logrus"
 )
@@ -33,6 +32,14 @@ type PingdomEntry struct {
 	Country     string   `xml:"country"`
 	City        string   `xml:"city"`
 	Region      string   `xml:"region"`
+}
+
+func (e PingdomEntry) JunosName() string {
+	if strings.HasPrefix(e.Guid, "pingdom-") {
+		return e.Guid
+	}
+
+	return "pingdom-" + strings.TrimSuffix(e.Hostname, ".pingdom.com")
 }
 
 type PingdomRSS struct {
@@ -147,9 +154,7 @@ func mainInternal() error {
 	sort.Strings(ipMapKeys)
 
 	// compare entries
-	updatedKeys := sliceDiff.StringSliceDiff(addressMapKeys, ipMapKeys)
-
-	sort.Strings(updatedKeys)
+	updatedKeys := DiffSortedIPs(addressMapKeys, ipMapKeys)
 
 	log.Infof("Updating %v entries...", len(updatedKeys))
 
@@ -162,11 +167,7 @@ func mainInternal() error {
 
 		if addressEntry == nil {
 			// add new entry
-			if strings.HasPrefix(ipEntry.Guid, "pingdom-") {
-				commands = append(commands, fmt.Sprintf("set address \"%v\" %v", ipEntry.Guid, ipEntry.IPv4))
-			} else {
-				commands = append(commands, fmt.Sprintf("set address \"pingdom-%v\" %v", ipEntry.Hostname, ipEntry.IPv4))
-			}
+			commands = append(commands, fmt.Sprintf("set address \"%v\" %v", ipEntry.JunosName(), ipEntry.IPv4))
 		} else {
 			// remove existing entry
 			commands = append(commands, fmt.Sprintf("delete address \"%v\"", addressEntry.Name))
@@ -181,23 +182,19 @@ func mainInternal() error {
 	for _, key := range ipMapKeys {
 		ipEntry := ipMap[key]
 
-		if strings.HasPrefix(ipEntry.Guid, "pingdom-") {
-			commands = append(commands, fmt.Sprintf("set address-set \"%v\" address \"%v\"", PingdomProbeServersAddressSetName, ipEntry.Guid))
-		} else {
-			commands = append(commands, fmt.Sprintf("set address-set \"%v\" address \"pingdom-%v\"", PingdomProbeServersAddressSetName, ipEntry.Hostname))
-		}
+		commands = append(commands, fmt.Sprintf("set address-set \"%v\" address \"%v\"", PingdomProbeServersAddressSetName, ipEntry.JunosName()))
 	}
 
 	commands = append(commands, "top")
 
 	// apply changes
 	log.Infof("Applying changes...")
-	/*
-		if log.IsLevelEnabled(log.DebugLevel) {
-			for _, c := range commands {
-				log.Debugf("  %v", c)
-			}
-		}*/
+
+	/*if log.IsLevelEnabled(log.DebugLevel) {
+		for _, c := range commands {
+			log.Debugf("  %v", c)
+		}
+	}*/
 
 	defer jnpr.Rollback(nil)
 
