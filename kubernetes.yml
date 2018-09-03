@@ -1,0 +1,26 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: junos-sync-pingdom-ips
+  namespace: juniper-support
+spec:
+  schedule: "@hourly"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: junos-sync-pingdom-ips
+            image: kontainer.store/networking/junos-sync-pingdom-ips:latest
+            imagePullPolicy: Always
+            env:
+              - name: JUNIPER_HOST   
+                value: "192.168.208.1"
+              - name: JUNIPER_USER  
+                value: "addressbook-sync"
+              - name: JUNIPER_PASSWORD   
+                valueFrom:
+                  secretKeyRef:
+                    name: junos-sync
+                    key: juniper-password
+          restartPolicy: OnFailure
