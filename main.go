@@ -34,12 +34,18 @@ type PingdomEntry struct {
 	Region      string   `xml:"region"`
 }
 
-func (e PingdomEntry) IsActiveIPv4() bool {
-	return e.State == "Active" && e.IPv4 != ""
+func (e PingdomEntry) GetIPv4() (string, bool) {
+	if e.State != "Active" || e.IPv4 == "" {
+		return "", false
+	}
+	return unifyIP(e.IPv4), true
 }
 
-func (e PingdomEntry) IsActiveIPv6() bool {
-	return e.State == "Active" && e.IPv6 != ""
+func (e PingdomEntry) GetIPv6() (string, bool) {
+	if e.State != "Active" || e.IPv6 == "" {
+		return "", false
+	}
+	return unifyIP(e.IPv6), true
 }
 
 func (e PingdomEntry) JunosName(ipv6 bool) string {
@@ -171,11 +177,11 @@ func mainInternal() error {
 	// build IP map
 	ipMap := make(map[string]*PingdomEntry)
 	for i, a := range pingdom.Entries {
-		if a.IsActiveIPv4() {
-			ipMap[unifyIP(a.IPv4)] = &pingdom.Entries[i]
+		if ip, ok := a.GetIPv4(); ok {
+			ipMap[ip] = &pingdom.Entries[i]
 		}
-		if a.IsActiveIPv6() {
-			ipMap[unifyIP(a.IPv6)] = &pingdom.Entries[i]
+		if ip, ok := a.GetIPv6(); ok {
+			ipMap[ip] = &pingdom.Entries[i]
 		}
 	}
 
@@ -201,9 +207,13 @@ func mainInternal() error {
 		if addressEntry == nil {
 			// add new entry
 			if isIPv6 {
-				commands = append(commands, fmt.Sprintf("set address \"%v\" %v", ipEntry.JunosName(true), ipEntry.IPv6))
+				if ip, ok := ipEntry.GetIPv6(); ok {
+					commands = append(commands, fmt.Sprintf("set address \"%v\" %v", ipEntry.JunosName(true), ip))
+				}
 			} else {
-				commands = append(commands, fmt.Sprintf("set address \"%v\" %v", ipEntry.JunosName(false), ipEntry.IPv4))
+				if ip, ok := ipEntry.GetIPv4(); ok {
+					commands = append(commands, fmt.Sprintf("set address \"%v\" %v", ipEntry.JunosName(false), ip))
+				}
 			}
 		} else {
 			// remove existing entry
@@ -220,10 +230,10 @@ func mainInternal() error {
 	for _, key := range ipMapKeys {
 		ipEntry := ipMap[key]
 
-		if ipEntry.IsActiveIPv4() {
+		if _, ok := ipEntry.GetIPv4(); ok {
 			commands = append(commands, fmt.Sprintf("set address-set \"%v\" address \"%v\"", PingdomProbeServersAddressSetName, ipEntry.JunosName(false)))
 		}
-		if ipEntry.IsActiveIPv6() {
+		if _, ok := ipEntry.GetIPv6(); ok {
 			commands = append(commands, fmt.Sprintf("set address-set \"%v\" address \"%v\"", PingdomProbeServersAddressSetName, ipEntry.JunosName(true)))
 		}
 	}
