@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"encoding/binary"
 	"encoding/xml"
 	"fmt"
 	"hash/crc64"
-	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -150,19 +148,24 @@ func mainInternal() error {
 
 	ipAddressMap := make(map[string]*IPAddressEntry)
 	{
+		crc64Table := crc64.MakeTable(0x3405254d7ba559cd)
 		urls := strings.Split(ipsSourceUrl, ";;")
+
 		for _, url := range urls {
-			ipXml, err := http.Get(url)
+			log.Infof("  Downloading IPs from %v ...", url)
+
+			var ips []string
+
+			if strings.HasPrefix(url, "http:") || strings.HasPrefix(url, "https:") {
+				ips, err = getIPsFromURL(url)
+			} else if strings.HasPrefix(url, "dns:") {
+				ips, err = getIPsFromDNS(url)
+			}
 			if err != nil {
 				return err
 			}
 
-			log.Infof("  Downloading IPs from %v ...", url)
-
-			crc64Table := crc64.MakeTable(0x3405254d7ba559cd)
-			scanner := bufio.NewScanner(ipXml.Body)
-			for scanner.Scan() {
-				ip := unifyIP(strings.TrimSpace(scanner.Text()))
+			for _, ip := range ips {
 				crc := crc64.Checksum([]byte(ip), crc64Table)
 				b := make([]byte, 8)
 				binary.LittleEndian.PutUint64(b, crc)
@@ -172,10 +175,6 @@ func mainInternal() error {
 					IsIPv6:    strings.Contains(ip, ":"),
 					JunosName: fmt.Sprintf("%v-%v", juniperAddressSetName, zbase32.EncodeToString(b)),
 				}
-			}
-			err = scanner.Err()
-			if err != nil {
-				return err
 			}
 		}
 	}

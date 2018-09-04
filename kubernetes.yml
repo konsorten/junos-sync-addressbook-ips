@@ -6,6 +6,7 @@ metadata:
   namespace: juniper-support
 data:
   pingdom-probe-servers: "https://my.pingdom.com/probes/ipv4;;https://my.pingdom.com/probes/ipv6"
+  pingdom-webhook-servers: "dns://webhook.pingdom.com"
   cloudflare-servers: "https://www.cloudflare.com/ips-v4;;https://www.cloudflare.com/ips-v6"
 ---
 apiVersion: batch/v1beta1

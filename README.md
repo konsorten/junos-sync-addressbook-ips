@@ -18,10 +18,11 @@ The following environment variables are required to run the tool:
 
 This is a list of popular providers and IP address lists:
 
-| Provider | IPv4 URL | IPv6 URL |
-| --- | --- | --- |
-| Pingdom | https://my.pingdom.com/probes/ipv4 | https://my.pingdom.com/probes/ipv6 |
-| Cloudflare | https://www.cloudflare.com/ips-v4 | https://www.cloudflare.com/ips-v6 |
+| Provider | URLs |
+| --- | --- |
+| Pingdom Probe Servers | https://my.pingdom.com/probes/ipv4 <br> https://my.pingdom.com/probes/ipv6 |
+| Pingdom Webhook Servers | dns://webhook.pingdom.com |
+| Cloudflare | https://www.cloudflare.com/ips-v4 <br> https://www.cloudflare.com/ips-v6 |
 
 ## Running the Cron Job manually
 
