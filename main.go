@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
+	"encoding/binary"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
+	"hash/crc64"
 	"net/http"
 	"os"
 	"sort"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/scottdware/go-junos"
 	log "github.com/sirupsen/logrus"
+	"github.com/tv42/zbase32"
 )
 
 type GlobalAddressbook struct {
@@ -20,54 +23,10 @@ type GlobalAddressbook struct {
 	AddressSets    []junos.AddressSet   `xml:"security>address-book>address-set"`
 }
 
-type PingdomEntry struct {
-	XMLName     xml.Name `xml:"item"`
-	Guid        string   `xml:"guid"`
-	Title       string   `xml:"title"`
-	Description string   `xml:"description"`
-	IPv4        string   `xml:"ip"`
-	IPv6        string   `xml:"ipv6"`
-	Hostname    string   `xml:"hostname"`
-	State       string   `xml:"state"`
-	Country     string   `xml:"country"`
-	City        string   `xml:"city"`
-	Region      string   `xml:"region"`
-}
-
-func (e PingdomEntry) GetIPv4() (string, bool) {
-	if e.State != "Active" || e.IPv4 == "" {
-		return "", false
-	}
-	return unifyIP(e.IPv4), true
-}
-
-func (e PingdomEntry) GetIPv6() (string, bool) {
-	if e.State != "Active" || e.IPv6 == "" {
-		return "", false
-	}
-	return unifyIP(e.IPv6), true
-}
-
-func (e PingdomEntry) JunosName(ipv6 bool) string {
-	var suffix string
-	if ipv6 {
-		suffix = "-v6"
-	} else {
-		suffix = "-v4"
-	}
-
-	if strings.HasPrefix(e.Guid, "pingdom-") {
-		return e.Guid + suffix
-	}
-
-	return "pingdom-" + strings.TrimSuffix(e.Hostname, ".pingdom.com") + suffix
-}
-
-type PingdomRSS struct {
-	XMLName       xml.Name       `xml:"rss"`
-	Title         string         `xml:"channel>title"`
-	LastBuildDate string         `xml:"channel>lastBuildDate"`
-	Entries       []PingdomEntry `xml:"channel>item"`
+type IPAddressEntry struct {
+	IP        string
+	IsIPv6    bool
+	JunosName string
 }
 
 func unifyIP(ip string) string {
@@ -86,6 +45,7 @@ func main() {
 		log.Errorf("ERROR: %v", err)
 		os.Exit(1)
 	}
+	log.Info("DONE.")
 }
 
 func mainInternal() error {
@@ -107,6 +67,16 @@ func mainInternal() error {
 		return fmt.Errorf("Missing environment variable: JUNIPER_PASSWORD")
 	}
 
+	juniperAddressSetName := os.Getenv("JUNIPER_ADDRESS_SET")
+	if juniperAddressSetName == "" {
+		return fmt.Errorf("Missing environment variable: JUNIPER_ADDRESS_SET")
+	}
+
+	ipsSourceUrl := os.Getenv("IPS_SOURCE_URL")
+	if ipsSourceUrl == "" {
+		return fmt.Errorf("Missing environment variable: IPS_SOURCE_URL")
+	}
+
 	// perform login
 	log.Infof("Connecting to %v...", juniperHost)
 
@@ -121,8 +91,28 @@ func mainInternal() error {
 
 	defer jnpr.Close()
 
+	// lock the juniper config
+	err = jnpr.Lock()
+	if err != nil {
+		return fmt.Errorf("Failed to lock Juniper config: %v", err)
+	}
+
+	defer jnpr.Unlock()
+
 	// rollback any previously existing changes
-	jnpr.Rollback(nil)
+	{
+		diff, err := jnpr.Diff(0)
+		if err != nil {
+			return err
+		}
+		diffIsEmpty := strings.TrimSpace(diff) == ""
+
+		if !diffIsEmpty {
+			log.Infof("Rolling back uncommitted changes...")
+
+			jnpr.Rollback(0)
+		}
+	}
 
 	// retrieve the addressbook
 	log.Infof("Reading global addressbook...")
@@ -142,8 +132,9 @@ func mainInternal() error {
 
 	// build address map
 	addressMap := make(map[string]*junos.AddressEntry)
+	prefix := juniperAddressSetName + "-"
 	for i, a := range addressbook.AddressEntries {
-		if strings.HasPrefix(a.Name, "pingdom-") {
+		if strings.HasPrefix(a.Name, prefix) {
 			addressMap[unifyIP(a.IP)] = &addressbook.AddressEntries[i]
 		}
 	}
@@ -155,66 +146,63 @@ func mainInternal() error {
 	sort.Strings(addressMapKeys)
 
 	// get IP list
-	log.Infof("Downloading IP list...")
+	log.Infof("Retrieving IP lists...")
 
-	ipXml, err := http.Get("https://my.pingdom.com/probes/feed")
-	if err != nil {
-		return err
-	}
+	ipAddressMap := make(map[string]*IPAddressEntry)
+	{
+		urls := strings.Split(ipsSourceUrl, ";;")
+		for _, url := range urls {
+			ipXml, err := http.Get(url)
+			if err != nil {
+				return err
+			}
 
-	ipXmlData, err := ioutil.ReadAll(ipXml.Body)
-	if err != nil {
-		return err
-	}
+			log.Infof("  Downloading IPs from %v ...", url)
 
-	var pingdom PingdomRSS
-	if err := xml.Unmarshal(ipXmlData, &pingdom); err != nil {
-		return err
-	}
+			crc64Table := crc64.MakeTable(0x3405254d7ba559cd)
+			scanner := bufio.NewScanner(ipXml.Body)
+			for scanner.Scan() {
+				ip := unifyIP(strings.TrimSpace(scanner.Text()))
+				crc := crc64.Checksum([]byte(ip), crc64Table)
+				b := make([]byte, 8)
+				binary.LittleEndian.PutUint64(b, crc)
 
-	log.Debugf("  IP addresses found: %v", len(pingdom.Entries))
-
-	// build IP map
-	ipMap := make(map[string]*PingdomEntry)
-	for i, a := range pingdom.Entries {
-		if ip, ok := a.GetIPv4(); ok {
-			ipMap[ip] = &pingdom.Entries[i]
+				ipAddressMap[ip] = &IPAddressEntry{
+					IP:        ip,
+					IsIPv6:    strings.Contains(ip, ":"),
+					JunosName: fmt.Sprintf("%v-%v", juniperAddressSetName, zbase32.EncodeToString(b)),
+				}
+			}
+			err = scanner.Err()
+			if err != nil {
+				return err
+			}
 		}
-		if ip, ok := a.GetIPv6(); ok {
-			ipMap[ip] = &pingdom.Entries[i]
-		}
 	}
 
-	ipMapKeys := make([]string, 0, len(ipMap))
-	for ip := range ipMap {
-		ipMapKeys = append(ipMapKeys, ip)
+	ipAddresses := make([]string, 0, len(ipAddressMap))
+	for ip := range ipAddressMap {
+		ipAddresses = append(ipAddresses, ip)
 	}
-	sort.Strings(ipMapKeys)
+	sort.Strings(ipAddresses)
+
+	log.Debugf("  IP addresses found: %v", len(ipAddresses))
 
 	// compare entries
-	updatedKeys := DiffSortedIPs(addressMapKeys, ipMapKeys)
+	updatedKeys := DiffSortedIPs(addressMapKeys, ipAddresses)
 
 	log.Infof("Updating %v entries...", len(updatedKeys))
 
 	commands := make([]string, 0, 2*len(updatedKeys))
 	commands = append(commands, "edit security address-book global")
 
-	for _, key := range updatedKeys {
-		addressEntry := addressMap[key]
-		ipEntry := ipMap[key]
-		isIPv6 := strings.Contains(key, ":")
+	for _, ip := range updatedKeys {
+		addressEntry := addressMap[ip]
+		ipEntry := ipAddressMap[ip]
 
 		if addressEntry == nil {
 			// add new entry
-			if isIPv6 {
-				if ip, ok := ipEntry.GetIPv6(); ok {
-					commands = append(commands, fmt.Sprintf("set address \"%v\" %v", ipEntry.JunosName(true), ip))
-				}
-			} else {
-				if ip, ok := ipEntry.GetIPv4(); ok {
-					commands = append(commands, fmt.Sprintf("set address \"%v\" %v", ipEntry.JunosName(false), ip))
-				}
-			}
+			commands = append(commands, fmt.Sprintf("set address \"%v\" %v", ipEntry.JunosName, ip))
 		} else {
 			// remove existing entry
 			commands = append(commands, fmt.Sprintf("delete address \"%v\"", addressEntry.Name))
@@ -222,20 +210,13 @@ func mainInternal() error {
 	}
 
 	// build address-set
-	const PingdomProbeServersAddressSetName = "pingdom-probe-servers"
+	commands = append(commands, fmt.Sprintf("delete address-set \"%v\"", juniperAddressSetName))
+	commands = append(commands, fmt.Sprintf("set address-set \"%v\" description \"IP addresses from %v\"", juniperAddressSetName, ipsSourceUrl))
 
-	commands = append(commands, fmt.Sprintf("delete address-set \"%v\"", PingdomProbeServersAddressSetName))
-	commands = append(commands, fmt.Sprintf("set address-set \"%v\" description \"Pingdom Probe Servers\"", PingdomProbeServersAddressSetName))
+	for _, ip := range ipAddresses {
+		ipEntry := ipAddressMap[ip]
 
-	for _, key := range ipMapKeys {
-		ipEntry := ipMap[key]
-
-		if _, ok := ipEntry.GetIPv4(); ok {
-			commands = append(commands, fmt.Sprintf("set address-set \"%v\" address \"%v\"", PingdomProbeServersAddressSetName, ipEntry.JunosName(false)))
-		}
-		if _, ok := ipEntry.GetIPv6(); ok {
-			commands = append(commands, fmt.Sprintf("set address-set \"%v\" address \"%v\"", PingdomProbeServersAddressSetName, ipEntry.JunosName(true)))
-		}
+		commands = append(commands, fmt.Sprintf("set address-set \"%v\" address \"%v\"", juniperAddressSetName, ipEntry.JunosName))
 	}
 
 	commands = append(commands, "top")
@@ -249,7 +230,18 @@ func mainInternal() error {
 		}
 	}*/
 
-	defer jnpr.Rollback(nil)
+	defer func() {
+		diff, err := jnpr.Diff(0)
+		if err == nil {
+			diffIsEmpty := strings.TrimSpace(diff) == ""
+
+			if !diffIsEmpty {
+				log.Infof("Rolling back uncommitted changes...")
+
+				jnpr.Rollback(0)
+			}
+		}
+	}()
 
 	err = jnpr.Config(commands, "set", false)
 	if err != nil {

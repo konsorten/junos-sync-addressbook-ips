@@ -1,3 +1,13 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: address-set-mapping
+  namespace: juniper-support
+data:
+  pingdom-probe-servers: "https://my.pingdom.com/probes/ipv4;;https://my.pingdom.com/probes/ipv6"
+  cloudflare-servers: "https://www.cloudflare.com/ips-v4;;https://www.cloudflare.com/ips-v6"
+---
 apiVersion: batch/v1beta1
 kind: CronJob
 metadata:
@@ -9,18 +19,25 @@ spec:
     spec:
       template:
         spec:
+          volumes:
+            - name: address-set-mapping
+              configMap:
+                name: address-set-mapping
+          restartPolicy: OnFailure
           containers:
-          - name: junos-sync-addressbook-ips
-            image: kontainer.store/networking/junos-sync-addressbook-ips:a001
+          - name: junos-sync-pingdom-ipv4
+            image: kontainer.store/networking/junos-sync-addressbook-ips:a007
             imagePullPolicy: Always
+            volumeMounts:
+            - name: address-set-mapping
+              mountPath: /etc/juniper-address-set-mapping
             env:
-              - name: JUNIPER_HOST   
+              - name: JUNIPER_HOST
                 value: "192.168.208.1"
-              - name: JUNIPER_USER  
+              - name: JUNIPER_USER
                 value: "addressbook-sync"
-              - name: JUNIPER_PASSWORD   
+              - name: JUNIPER_PASSWORD
                 valueFrom:
                   secretKeyRef:
                     name: junos-sync
                     key: juniper-password
-          restartPolicy: OnFailure
