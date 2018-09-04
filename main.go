@@ -155,11 +155,14 @@ func mainInternal() error {
 			log.Infof("  Downloading IPs from %v ...", url)
 
 			var ips []string
+			var err error
 
 			if strings.HasPrefix(url, "http:") || strings.HasPrefix(url, "https:") {
 				ips, err = getIPsFromURL(url)
 			} else if strings.HasPrefix(url, "dns:") {
 				ips, err = getIPsFromDNS(url)
+			} else {
+				log.Errorf("Unsupported URL schema: %v", url)
 			}
 			if err != nil {
 				return err

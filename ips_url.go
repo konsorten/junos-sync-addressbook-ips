@@ -16,7 +16,10 @@ func getIPsFromURL(url string) ([]string, error) {
 	ips := make([]string, 0)
 
 	for scanner.Scan() {
-		ips = append(ips, unifyIP(strings.TrimSpace(scanner.Text())))
+		ip := strings.TrimSpace(scanner.Text())
+		if ip != "" {
+			ips = append(ips, unifyIP(ip))
+		}
 	}
 
 	err = scanner.Err()
