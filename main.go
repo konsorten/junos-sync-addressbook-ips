@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/scottdware/go-junos"
 	log "github.com/sirupsen/logrus"
@@ -25,6 +26,12 @@ type IPAddressEntry struct {
 	IP        string
 	IsIPv6    bool
 	JunosName string
+}
+
+type ExpectedAddressSetName struct {
+	Name        string
+	IncludeIPv4 bool
+	IncludeIPv6 bool
 }
 
 func unifyIP(ip string) string {
@@ -144,18 +151,24 @@ func mainInternal() error {
 	sort.Strings(addressMapKeys)
 
 	// check if the address-set exists
-	addressSetExists := false
+	addressSetNames := []*ExpectedAddressSetName{
+		&ExpectedAddressSetName{Name: juniperAddressSetName, IncludeIPv4: true, IncludeIPv6: true},
+		&ExpectedAddressSetName{Name: juniperAddressSetName + "-v4", IncludeIPv4: true},
+		&ExpectedAddressSetName{Name: juniperAddressSetName + "-v6", IncludeIPv6: true},
+	}
+	addressSetExists := 0
 	for _, a := range addressbook.AddressSets {
-		if a.Name == juniperAddressSetName {
-			addressSetExists = true
-			break
+		for _, exp := range addressSetNames {
+			if a.Name == exp.Name {
+				addressSetExists++
+			}
 		}
 	}
 
-	if addressSetExists {
-		log.Infof("Address-Set '%v' does already exist; Updating...", juniperAddressSetName)
+	if addressSetExists >= len(addressSetNames) {
+		log.Infof("Address-Set '%v' and its variants do already exist; Updating...", juniperAddressSetName)
 	} else {
-		log.Infof("Address-Set '%v' does not exist; Creating...", juniperAddressSetName)
+		log.Infof("Address-Set '%v' and its variants are missing; Continueing...", juniperAddressSetName)
 	}
 
 	// get IP list
@@ -209,11 +222,11 @@ func mainInternal() error {
 	updatedKeys := DiffSortedIPs(addressMapKeys, ipAddresses)
 
 	if len(updatedKeys) <= 0 {
-		if addressSetExists {
+		if addressSetExists >= len(addressSetNames) {
 			log.Infof("Nothing to update.")
 			return nil
 		} else {
-			log.Infof("Nothing to update, but address-set does not exist; continuing...")
+			log.Infof("Nothing to update, but not all address-sets do exist; continuing...")
 		}
 	}
 
@@ -236,13 +249,17 @@ func mainInternal() error {
 	}
 
 	// build address-set
-	commands = append(commands, fmt.Sprintf("delete address-set \"%v\"", juniperAddressSetName))
-	commands = append(commands, fmt.Sprintf("set address-set \"%v\" description \"IP addresses from %v\"", juniperAddressSetName, ipsSourceUrl))
+	for _, exp := range addressSetNames {
+		commands = append(commands, fmt.Sprintf("delete address-set \"%v\"", exp.Name))
+		commands = append(commands, fmt.Sprintf("set address-set \"%v\" description \"Last update: %v\"", exp.Name, time.Now().Format(time.UnixDate)))
 
-	for _, ip := range ipAddresses {
-		ipEntry := ipAddressMap[ip]
+		for _, ip := range ipAddresses {
+			ipEntry := ipAddressMap[ip]
 
-		commands = append(commands, fmt.Sprintf("set address-set \"%v\" address \"%v\"", juniperAddressSetName, ipEntry.JunosName))
+			if (ipEntry.IsIPv6 && exp.IncludeIPv6) || (!ipEntry.IsIPv6 && exp.IncludeIPv4) {
+				commands = append(commands, fmt.Sprintf("set address-set \"%v\" address \"%v\"", exp.Name, ipEntry.JunosName))
+			}
+		}
 	}
 
 	commands = append(commands, "top")

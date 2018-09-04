@@ -14,6 +14,18 @@ The following environment variables are required to run the tool:
 | JUNIPER_ADDRESS_SET | The name of the address-set to create/update. | yes | pingdom-probe-servers |
 | IPS_SOURCE_URL | URL to list of IP addresses as plain text document. Multiple URLs can be separated by two semicolons (;;) | yes | https://my.pingdom.com/probes/ipv4 |
 
+## Address-Sets
+
+The following address-sets are being created by the update:
+
+| Name | Example | Description |
+| ---  | --- | --- |
+| {JUNIPER_ADDRESS_SET} | cloudflare-servers | List of both IPv4 and IPv6 addresses. |
+| {JUNIPER_ADDRESS_SET}-v4 | cloudflare-servers-v4 | List of only the IPv4 addresses. |
+| {JUNIPER_ADDRESS_SET}-v6 | cloudflare-servers-v6 | List of only the IPv6 addresses. |
+
+The different variants are esp. required for NATing.
+
 ## Example URLs
 
 This is a list of popular providers and IP address lists:
