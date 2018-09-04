@@ -143,6 +143,21 @@ func mainInternal() error {
 	}
 	sort.Strings(addressMapKeys)
 
+	// check if the address-set exists
+	addressSetExists := false
+	for _, a := range addressbook.AddressSets {
+		if a.Name == juniperAddressSetName {
+			addressSetExists = true
+			break
+		}
+	}
+
+	if addressSetExists {
+		log.Infof("Address-Set '%v' does already exist; Updating...", juniperAddressSetName)
+	} else {
+		log.Infof("Address-Set '%v' does not exist; Creating...", juniperAddressSetName)
+	}
+
 	// get IP list
 	log.Infof("Retrieving IP lists...")
 
@@ -192,6 +207,15 @@ func mainInternal() error {
 
 	// compare entries
 	updatedKeys := DiffSortedIPs(addressMapKeys, ipAddresses)
+
+	if len(updatedKeys) <= 0 {
+		if addressSetExists {
+			log.Infof("Nothing to update.")
+			return nil
+		} else {
+			log.Infof("Nothing to update, but address-set does not exist; continuing...")
+		}
+	}
 
 	log.Infof("Updating %v entries...", len(updatedKeys))
 
